@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "JobHunter AI - GOD MODE",
+  "version": "2.0",
+  "description": "🔥 AI-powered job hunter with title-first matching, X-Ray mode, and smart export. GOD MODE ACTIVATED!",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://www.linkedin.com/jobs/search/*",
+    "https://www.linkedin.com/jobs/view/*",
+    "https://api.anthropic.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.linkedin.com/jobs/search/*", "https://www.linkedin.com/jobs/view/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "images/icon16.png",
+      "48": "images/icon48.png",
+      "128": "images/icon128.png"
+    }
+  },
+  "options_page": "options.html",
+  "icons": {
+    "16": "images/icon16.png",
+    "48": "images/icon48.png",
+    "128": "images/icon128.png"
+  }
+}

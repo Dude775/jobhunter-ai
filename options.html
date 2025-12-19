@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>JobHunter AI - Settings</title>
+  <style>
+    body {
+      width: 600px;
+      margin: 20px auto;
+      font-family: Arial, sans-serif;
+    }
+    h1 {
+      font-size: 24px;
+      margin-bottom: 20px;
+    }
+    .section {
+      margin-bottom: 30px;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    .section h2 {
+      font-size: 18px;
+      margin-bottom: 10px;
+    }
+    input[type="file"] {
+      margin: 10px 0;
+    }
+    button {
+      padding: 10px 20px;
+      cursor: pointer;
+      background-color: #0073b1;
+      color: white;
+      border: none;
+      border-radius: 5px;
+    }
+    button:hover {
+      background-color: #005a8d;
+    }
+    .status {
+      margin-top: 10px;
+      color: green;
+    }
+    .error {
+      color: red;
+    }
+    .loading {
+      color: #0073b1;
+    }
+    button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    .profile-item {
+      margin: 10px 0;
+      padding: 10px;
+      background-color: #f5f5f5;
+      border-radius: 5px;
+    }
+    .profile-item h3 {
+      margin: 0 0 10px 0;
+      font-size: 16px;
+    }
+    .profile-item ul {
+      margin: 5px 0;
+      padding-left: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>JobHunter AI Settings</h1>
+
+  <div class="section">
+    <h2>Claude API Configuration</h2>
+    <p>Enter your Claude API key to enable AI-powered CV analysis</p>
+    <label for="claude-api-key">API Key:</label>
+    <input type="password" id="claude-api-key" style="width: 100%; padding: 8px; margin: 10px 0; box-sizing: border-box;" placeholder="Enter your Claude API key">
+    <button id="save-api-key">Save API Key</button>
+    <div id="api-key-status" class="status"></div>
+  </div>
+
+  <div class="section">
+    <h2>CV Analysis</h2>
+    <p>Paste your CV text below to analyze and extract your skills, experience, and tech stack</p>
+    <textarea id="cv-text" placeholder="Paste your CV text here..." style="width: 100%; height: 200px; padding: 10px; margin: 10px 0; box-sizing: border-box; font-family: Arial, sans-serif;"></textarea>
+    <button id="analyze-btn">Analyze CV</button>
+    <div id="analysis-results" style="margin-top: 20px;">
+      <!-- Analysis results will be displayed here -->
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Job DNA Profile</h2>
+    <p>Your extracted profile information</p>
+    <div id="profileInfo">
+      <!-- Profile information will be displayed here -->
+    </div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

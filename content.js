@@ -1078,7 +1078,7 @@ function disableXRayMode() {
 async function handleXRayClick(event) {
   if (!xrayModeEnabled) return;
 
-  // Find the job card element
+  // Find the job card element - X-Ray works on ALL jobs regardless of previous score
   const jobCard = event.target.closest('[data-job-id], .job-card-container, .jobs-search-results__list-item');
   if (!jobCard) return;
 
@@ -1091,12 +1091,69 @@ async function handleXRayClick(event) {
 
   if (!titleEl) return;
 
+  // ============================================================================
+  // BUG FIX: Extract full job description from the job details panel
+  // ============================================================================
+  let description = '';
+  const descriptionSelectors = [
+    '#job-details > div > p',
+    '.jobs-description__content',
+    '.jobs-description-content__text',
+    '.jobs-box__html-content',
+    '#job-details .jobs-description',
+    '.job-details-jobs-unified-top-card__job-description',
+    '.jobs-details__main-content',
+    'article.jobs-description'
+  ];
+
+  for (const selector of descriptionSelectors) {
+    const el = document.querySelector(selector);
+    if (el && el.innerText?.trim()) {
+      description = el.innerText.trim();
+      console.log(`🔬 X-Ray: Found description using "${selector}" (${description.length} chars)`);
+      break;
+    }
+  }
+
+  // Fallback: try the main job details container
+  if (!description || description.length < 50) {
+    const jobDetailsPanel = document.querySelector('.jobs-details__main-content, .jobs-search__job-details');
+    if (jobDetailsPanel) {
+      description = jobDetailsPanel.innerText?.trim() || '';
+      console.log(`🔬 X-Ray: Fallback description (${description.length} chars)`);
+    }
+  }
+
+  // Extract location if available
+  let location = '';
+  const locationSelectors = [
+    '.job-details-jobs-unified-top-card__primary-description-without-tagline',
+    '.job-details-jobs-unified-top-card__bullet',
+    '.jobs-unified-top-card__subtitle-primary-grouping'
+  ];
+
+  for (const selector of locationSelectors) {
+    const els = document.querySelectorAll(selector);
+    for (const el of els) {
+      const text = el.textContent.trim().toLowerCase();
+      if (text.includes('israel') || text.includes('tel aviv') || text.includes('remote') || text.includes('hybrid')) {
+        location = el.textContent.trim();
+        break;
+      }
+    }
+    if (location) break;
+  }
+
   const jobData = {
     title: titleEl.textContent.trim(),
-    company: companyEl?.textContent.trim() || 'Unknown Company'
+    company: companyEl?.textContent.trim() || 'Unknown Company',
+    description: description,
+    location: location
   };
 
-  updateCommandCenter('🔬 X-Ray analyzing job...', 'active');
+  console.log(`🔬 X-Ray Analysis - Job: "${jobData.title}", Description: ${description.length} chars`);
+
+  updateCommandCenter('🔬 X-Ray analyzing with full description...', 'active');
 
   // Get instant analysis
   const response = await new Promise((resolve) => {
@@ -1160,6 +1217,10 @@ async function handleXRayClick(event) {
           <div style="opacity: 0.8;">Seniority</div>
           <div style="font-weight: bold; font-size: 16px;">${breakdown.seniority}%</div>
         </div>
+      </div>
+      <div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 6px; margin-bottom: 16px; font-size: 11px;">
+        <span style="opacity: 0.8;">Description:</span>
+        ${jobData.description ? `✅ ${jobData.description.length} chars analyzed` : '⚠️ Not found (title-only scoring)'}
       </div>
       ` : ''}
       <button onclick="this.parentElement.remove()" style="

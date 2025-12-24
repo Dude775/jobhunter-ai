@@ -10,11 +10,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Handle Analyze CV Button
   document.getElementById('analyze-btn').addEventListener('click', analyzeCV);
+
+  // Handle Save Preferences Button
+  document.getElementById('save-preferences').addEventListener('click', savePreferences);
 });
 
-// Load saved API key and profile data
+// Load saved API key, profile, and preferences data
 function loadSavedData() {
-  chrome.storage.local.get(['claudeApiKey', 'userProfile'], function(result) {
+  chrome.storage.local.get(['claudeApiKey', 'userProfile', 'userPreferences'], function(result) {
     if (result.claudeApiKey) {
       document.getElementById('claude-api-key').value = result.claudeApiKey;
       document.getElementById('api-key-status').textContent = 'API key loaded';
@@ -23,6 +26,24 @@ function loadSavedData() {
 
     if (result.userProfile) {
       displayProfile(result.userProfile);
+    }
+
+    // Load preferences
+    if (result.userPreferences) {
+      const prefs = result.userPreferences;
+      document.getElementById('auto-filter').checked = prefs.autoFilter === true; // Default OFF
+      document.getElementById('blacklist-keywords').value = (prefs.blacklistKeywords || []).join(', ');
+      document.getElementById('preferred-locations').value = (prefs.preferredLocations || []).join(', ');
+
+      // Load experience levels (default: Mid-Senior level checked)
+      const savedLevels = prefs.experienceLevels || ['Mid-Senior level'];
+      const expCheckboxes = document.querySelectorAll('[id^="exp-"]');
+      expCheckboxes.forEach(checkbox => {
+        checkbox.checked = savedLevels.includes(checkbox.value);
+      });
+    } else {
+      // Set default: Mid-Senior level checked
+      document.getElementById('exp-mid-senior').checked = true;
     }
   });
 }
@@ -108,6 +129,8 @@ function analyzeCV() {
           experience: analysis.experience || [],
           education: analysis.education || [],
           techStack: analysis.techStack || [],
+          dynamicKeywords: analysis.dynamicKeywords || [], // Bug fix: save extracted keywords
+          targetJobTitles: analysis.targetJobTitles || [], // NEW: save target job titles for search
           seniorityLevel: analysis.seniorityLevel || 'Not specified',
           summary: analysis.summary || '',
           rawCV: cvText,
@@ -145,6 +168,18 @@ function displayAnalysisResults(analysis) {
     html += `<li>${tech}</li>`;
   });
   html += '</ul></div>';
+
+  // NEW: Show target job titles (Top 5 Professions)
+  if (analysis.targetJobTitles && analysis.targetJobTitles.length > 0) {
+    html += '<div class="profile-item"><h3>Top 5 Target Job Titles</h3>';
+    html += '<p style="font-size: 12px; color: #666;">These titles will be used for LinkedIn job searches:</p>';
+    html += '<ol>';
+    analysis.targetJobTitles.forEach((title, index) => {
+      const badge = index === 0 ? ' <span style="background: #00C853; color: white; padding: 2px 6px; border-radius: 10px; font-size: 10px;">PRIMARY</span>' : '';
+      html += `<li>${title}${badge}</li>`;
+    });
+    html += '</ol></div>';
+  }
 
   html += '<p class="status">Profile saved successfully! You can now use JobHunter AI on LinkedIn job pages.</p>';
 
@@ -184,5 +219,59 @@ function displayProfile(profile) {
 
   html += `<div class="profile-item"><h3>Seniority Level</h3><p>${profile.seniorityLevel}</p></div>`;
 
+  // NEW: Show target job titles if available
+  if (profile.targetJobTitles && profile.targetJobTitles.length > 0) {
+    html += '<div class="profile-item"><h3>Target Job Titles</h3>';
+    html += '<ol>';
+    profile.targetJobTitles.slice(0, 5).forEach((title, index) => {
+      const badge = index === 0 ? ' <span style="background: #00C853; color: white; padding: 2px 6px; border-radius: 10px; font-size: 10px;">PRIMARY</span>' : '';
+      html += `<li>${title}${badge}</li>`;
+    });
+    html += '</ol></div>';
+  }
+
   profileDiv.innerHTML = html;
+}
+
+// Save user preferences for filtering
+function savePreferences() {
+  const statusDiv = document.getElementById('preferences-status');
+
+  const autoFilter = document.getElementById('auto-filter').checked;
+  const blacklistInput = document.getElementById('blacklist-keywords').value.trim();
+  const locationsInput = document.getElementById('preferred-locations').value.trim();
+
+  // Parse comma-separated values, filter empty strings
+  const blacklistKeywords = blacklistInput
+    ? blacklistInput.split(',').map(k => k.trim()).filter(k => k.length > 0)
+    : [];
+
+  const preferredLocations = locationsInput
+    ? locationsInput.split(',').map(l => l.trim()).filter(l => l.length > 0)
+    : ['Center District', 'Tel Aviv', 'Remote'];
+
+  // Collect selected experience levels
+  const experienceLevels = [];
+  const expCheckboxes = document.querySelectorAll('[id^="exp-"]');
+  expCheckboxes.forEach(checkbox => {
+    if (checkbox.checked) {
+      experienceLevels.push(checkbox.value);
+    }
+  });
+
+  const userPreferences = {
+    autoFilter,
+    blacklistKeywords,
+    preferredLocations,
+    experienceLevels: experienceLevels.length > 0 ? experienceLevels : ['Mid-Senior level'],
+    lastUpdated: new Date().toISOString()
+  };
+
+  chrome.storage.local.set({ userPreferences }, function() {
+    const status = autoFilter
+      ? `Auto-filtering ON with ${blacklistKeywords.length} keywords.`
+      : `Auto-filtering OFF. All jobs will be shown.`;
+    statusDiv.textContent = status;
+    statusDiv.className = 'status';
+  });
 }

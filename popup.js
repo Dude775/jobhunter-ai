@@ -217,7 +217,7 @@ function extractCleanKeywords(profile) {
   return foundKeywords.map(kw => cleanMap[kw] || kw);
 }
 
-// Find Similar Jobs - גרסה מתוקנת עם מילות מפתח נקיות
+// Find Similar Jobs - FIXED: Uses first targetJobTitle instead of keyword mashup
 async function handleFindJobs() {
   console.log('🚀 Find Similar Jobs clicked!');
 
@@ -227,7 +227,7 @@ async function handleFindJobs() {
   btn.disabled = true;
 
   try {
-    const { userProfile } = await chrome.storage.local.get(['userProfile']);
+    const { userProfile, userPreferences } = await chrome.storage.local.get(['userProfile', 'userPreferences']);
 
     if (!userProfile) {
       alert('⚠️ Please configure your profile first by going to Settings and analyzing your CV.');
@@ -235,58 +235,50 @@ async function handleFindJobs() {
       return;
     }
 
-    const profile = userProfile;
+    // ============================================================================
+    // FIX: Use FIRST targetJobTitle instead of keyword mashup
+    // Format: "[Job Title] [Location]"
+    // Example: "AI Engineer Center District Israel" NOT "Senior RAG n8n Agent Pinecone"
+    // ============================================================================
 
-    // בניית חיפוש נקי
-    let finalKeywords = [];
+    let jobTitle = '';
 
-    // 1. רמת בכירות (רק המילה הראשונה)
-    const seniorityText = profile.seniorityLevel || '';
-    if (seniorityText.includes('Principal')) {
-      finalKeywords.push('Principal');
-    } else if (seniorityText.includes('Lead')) {
-      finalKeywords.push('Lead');
-    } else {
-      finalKeywords.push('Senior');
+    // Priority 1: Use first targetJobTitle from CV analysis
+    if (userProfile.targetJobTitles && userProfile.targetJobTitles.length > 0) {
+      jobTitle = userProfile.targetJobTitles[0];
+      console.log('✅ Using targetJobTitle:', jobTitle);
+    }
+    // Fallback: Build from seniority + generic title
+    else {
+      const seniorityText = userProfile.seniorityLevel || 'Senior';
+      const firstWord = seniorityText.split(/[,\s]/)[0] || 'Senior';
+      jobTitle = `${firstWord} Engineer`;
+      console.log('⚠️ Fallback job title:', jobTitle);
     }
 
-    // 2. מילות מפתח נקיות מהפרופיל
-    const cleanKeywords = extractCleanKeywords(profile);
+    // Get preferred location
+    const preferredLocations = userPreferences?.preferredLocations || ['Center District', 'Tel Aviv'];
+    const location = preferredLocations[0] || 'Center District';
+    const locationQuery = location.toLowerCase().includes('israel') ? location : `${location}, Israel`;
 
-    // 3. תן עדיפות למילות מפתח ייחודיות
-    const priorityKeywords = ['RAG', 'n8n', 'Vector', 'Agent', 'MLOps'];
-    const highPriority = cleanKeywords.filter(kw =>
-      priorityKeywords.some(p => kw.includes(p))
-    );
-    const normalPriority = cleanKeywords.filter(kw =>
-      !priorityKeywords.some(p => kw.includes(p))
-    );
-
-    // 4. בנה רשימה סופית (עד 5 מילים)
-    finalKeywords.push(...highPriority.slice(0, 3));
-    if (finalKeywords.length < 5) {
-      finalKeywords.push(...normalPriority.slice(0, 5 - finalKeywords.length));
-    }
-
-    // 5. יצירת שאילתת חיפוש נקייה
-    const query = finalKeywords.slice(0, 5).join(' ');
-    const location = 'Center District, Israel';
-    const searchUrl = `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(query)}&location=${encodeURIComponent(location)}`;
+    // Build clean search query: "[Job Title] [Location]"
+    const query = jobTitle;
+    const searchUrl = `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(query)}&location=${encodeURIComponent(locationQuery)}`;
 
     // Debug information
-    console.log('=== 🔍 JobHunter AI Clean Search ===');
-    console.log('Original seniority:', profile.seniorityLevel);
-    console.log('Clean keywords found:', cleanKeywords);
-    console.log('High priority:', highPriority);
+    console.log('=== 🔍 JobHunter AI FIXED Search ===');
+    console.log('Target Job Title:', jobTitle);
+    console.log('Location:', locationQuery);
     console.log('Final search query:', query);
     console.log('LinkedIn URL:', searchUrl);
-    console.log('====================================');
+    console.log('=====================================');
 
-    // פתיחת טאב חדש
+    // Open LinkedIn search
     chrome.tabs.create({ url: searchUrl });
 
     setTimeout(() => {
-      alert(`🔍 Searching for: "${query}"\n\nThe JobHunter AI agent will automatically analyze jobs and show match scores on the page!`);
+      const allTitles = userProfile.targetJobTitles?.slice(0, 3).join(', ') || jobTitle;
+      alert(`🔍 Searching for: "${jobTitle}"\n\n📋 Your target job titles:\n${allTitles}\n\nThe JobHunter AI agent will automatically analyze jobs and show match scores on the page!`);
     }, 500);
 
   } catch (error) {

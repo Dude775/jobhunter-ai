@@ -97,6 +97,63 @@
     </div>
   </div>
 
+  <div class="section">
+    <h2>Filtering Preferences</h2>
+    <p>Customize which jobs to filter out (optional)</p>
+
+    <div style="margin-bottom: 15px;">
+      <label>
+        <input type="checkbox" id="auto-filter">
+        Enable Auto-Filtering (hides jobs with excluded keywords)
+      </label>
+    </div>
+
+    <div style="margin-bottom: 15px;">
+      <label for="blacklist-keywords">Blacklist Keywords (comma-separated):</label>
+      <p style="font-size: 12px; color: #666; margin: 5px 0;">Jobs containing these keywords will be hidden. Leave empty to show all jobs.</p>
+      <input type="text" id="blacklist-keywords" style="width: 100%; padding: 8px; margin: 5px 0; box-sizing: border-box;" placeholder="e.g., SAP, ERP, legacy, COBOL">
+    </div>
+
+    <div style="margin-bottom: 15px;">
+      <label for="preferred-locations">Preferred Locations (comma-separated):</label>
+      <input type="text" id="preferred-locations" style="width: 100%; padding: 8px; margin: 5px 0; box-sizing: border-box;" placeholder="e.g., Tel Aviv, Remote, Center District">
+    </div>
+
+    <div style="margin-bottom: 15px;">
+      <label><strong>Experience Level Preferences:</strong></label>
+      <p style="font-size: 12px; color: #666; margin: 5px 0;">Select which experience levels to include in job searches:</p>
+      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 8px;">
+        <label style="display: flex; align-items: center; padding: 6px; background: #f5f5f5; border-radius: 4px;">
+          <input type="checkbox" id="exp-internship" value="Internship" style="margin-right: 8px;">
+          Internship
+        </label>
+        <label style="display: flex; align-items: center; padding: 6px; background: #f5f5f5; border-radius: 4px;">
+          <input type="checkbox" id="exp-entry" value="Entry level" style="margin-right: 8px;">
+          Entry level
+        </label>
+        <label style="display: flex; align-items: center; padding: 6px; background: #f5f5f5; border-radius: 4px;">
+          <input type="checkbox" id="exp-associate" value="Associate" style="margin-right: 8px;">
+          Associate
+        </label>
+        <label style="display: flex; align-items: center; padding: 6px; background: #f5f5f5; border-radius: 4px;">
+          <input type="checkbox" id="exp-mid-senior" value="Mid-Senior level" checked style="margin-right: 8px;">
+          Mid-Senior level
+        </label>
+        <label style="display: flex; align-items: center; padding: 6px; background: #f5f5f5; border-radius: 4px;">
+          <input type="checkbox" id="exp-director" value="Director" style="margin-right: 8px;">
+          Director
+        </label>
+        <label style="display: flex; align-items: center; padding: 6px; background: #f5f5f5; border-radius: 4px;">
+          <input type="checkbox" id="exp-executive" value="Executive" style="margin-right: 8px;">
+          Executive
+        </label>
+      </div>
+    </div>
+
+    <button id="save-preferences">Save Preferences</button>
+    <div id="preferences-status" class="status"></div>
+  </div>
+
   <script src="options.js"></script>
 </body>
 </html>

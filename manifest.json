@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "JobHunter AI - GOD MODE",
-  "version": "2.0",
-  "description": "🔥 AI-powered job hunter with title-first matching, X-Ray mode, and smart export. GOD MODE ACTIVATED!",
+  "version": "2.1",
+  "description": "AI-powered job matching for LinkedIn. Analyzes jobs in real-time and shows match scores based on your professional DNA.",
   "permissions": [
     "storage",
     "activeTab",

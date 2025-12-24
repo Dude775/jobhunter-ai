@@ -1,99 +1,84 @@
-cat > README.md << 'EOF'
-# 🤖 JobHunter AI - Your Personal AI Job Search Assistant
+# JobHunter AI v2.1
 
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
-![Chrome](https://img.shields.io/badge/Chrome-Extension-orange)
+AI-powered Chrome extension that analyzes LinkedIn jobs in real-time and shows match scores based on your professional profile.
 
-## 🎯 What is JobHunter AI?
+![Job DNA Profile](Images_for_README_repo&Linkedin/job_dna_profile.png)
 
-Stop wasting hours scrolling through irrelevant LinkedIn jobs! JobHunter AI uses Claude AI to analyze job postings in real-time and show you exactly which ones match your profile.
+## What it does
 
-**Built by a freelance AI engineer who got tired of endless job hunting.**
+- **Scans LinkedIn jobs** as you browse - no manual work
+- **Color-coded badges**: Green (75%+) = Apply | Orange (50-74%) = Maybe | Gray (<50%) = Skip
+- **Extracts your Job DNA** from your CV - skills, tech stack, target titles
+- **Smart LinkedIn search** using your primary job title
+- **Export top matches** to CSV
+
+![LinkedIn Results](Images_for_README_repo&Linkedin/linkedin_results.png)
+
+## Quick Start
+
+1. Clone: `git clone https://github.com/Dude775/jobhunter-ai.git`
+2. Chrome -> `chrome://extensions/` -> Developer Mode ON -> Load Unpacked -> Select folder
+3. Click extension -> Options -> Enter Claude API key
+4. Paste your CV -> Click "Analyze CV"
+5. Go to LinkedIn Jobs -> See the magic
+
+## New in v2.1
+
+- **Target Job Titles**: Auto-extracts 5 best-fit job titles from your CV
+- **Experience Level Filter**: Choose Junior/Mid/Senior/Executive
+- **Smarter Search**: Uses your PRIMARY job title, not random keywords
+- **Improved Matching**: Better title-to-skills correlation
+
+![Filtering Preferences](Images_for_README_repo&Linkedin/filtering_preferences.png)
+
+## How Scoring Works
+
+| Color | Score | Meaning |
+|-------|-------|---------|
+| Green | 75%+ | Strong match - Send CV |
+| Orange | 50-74% | Partial match - Review carefully |
+| Gray | <50% | Low match - Skip |
+
+## Features
+
+- **Job DNA Analysis**: Skills, Tech Stack, Seniority, Target Titles
+- **Real-time Scoring**: Instant badges on every job listing
+- **X-Ray Mode**: Deep analysis on click (beta)
+- **CSV Export**: Top 10 matches with scores and links
+- **Privacy First**: All processing local, your API key
+
+## Requirements
+
+- Chrome browser
+- Claude API key ([get one here](https://console.anthropic.com))
+
+## Tech Stack
+
+- Vanilla JavaScript
+- Chrome Extension Manifest V3
+- Claude API (Haiku)
+
+## Changelog
+
+### v2.1 (December 2024)
+- Added: Target Job Titles extraction
+- Added: Experience Level multi-select filter
+- Improved: LinkedIn search query logic
+- Improved: Title matching algorithm
+- Fixed: Keyword synonym expansion
+
+### v2.0 (December 2024)
+- Initial public release
+- Job DNA profile system
+- Real-time badge scoring
+- CSV export
+
+## License
+
+MIT - Free to use, modify, share.
 
 ---
 
-## ✨ Key Features
+Built by [David Rubin](https://linkedin.com/in/drubin877) | Israel
 
-- **🎯 Real-Time Scoring**: 0-100% match scores on every job
-- **🟢 Color-Coded Badges**: Green = Apply now, Gray = Skip
-- **🔍 Smart Search**: Auto-generated optimized queries  
-- **📊 X-Ray Analysis**: 1-click detailed job breakdown
-- **📥 Export Top 10**: CSV export of best matches
-- **🔒 Privacy-First**: Client-side only, your data stays local
-
-**🚀 [Read about the GOD MODE Algorithm & Advanced Features →](docs/FEATURES.md)**
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Google Chrome browser
-- [Claude API Key](https://console.anthropic.com/) (required)
-
-### Installation (2 minutes)
-
-1. **Clone & Load Extension:**
-```bash
-git clone https://github.com/[YOUR_USERNAME]/jobhunter-ai.git
-
-Open Chrome → chrome://extensions/ → Enable "Developer mode" → "Load unpacked" → Select folder
-
-Configure Profile:
-
-Click JobHunter AI icon → Options
-Enter your Claude API Key
-Paste your professional profile in CV Analysis
-Click "Analyze CV" → Save
-Start Hunting:
-
-Go to LinkedIn Jobs
-Click "Find Similar Jobs"
-Watch real-time scoring magic! 🔥
-🎯 How It Works
-AI Profile Analysis - Creates your "Job DNA" from skills and experience
-Real-Time Scanning - Analyzes jobs as you scroll LinkedIn
-Smart Scoring - 5-phase algorithm: Title (50%) + Location (20%) + Keywords (20%) + Seniority (10%) + Penalties
-Visual Feedback - Instant color-coded badges with match scores
-Example Results:
-
-🟢 "Senior RAG Engineer at NVIDIA" → 91% EXCELLENT
-⚫ "SAP Implementation Consultant" → 35% SKIP
-🔒 Privacy & Security
-✅ Client-side only - No external servers
-✅ Your API key - You control Claude usage and costs
-✅ Zero tracking - No data collection whatsoever
-✅ Open source - Inspect every line of code
-✅ Safe operations - Only reads visible content, no automation
-📊 What You'll Get
-After 1 hour of use:
-
-✅ 5-10 DREAM JOBS (95%+ matches)
-✅ 20-30 excellent matches (85%+)
-✅ Automatic filtering of 100+ irrelevant jobs
-✅ Top 10 CSV export ready for applications
-✅ Clear priorities - know exactly where to focus
-🤝 Contributing
-Contributions welcome! Ideas:
-
-Support for GPT-4, Gemini APIs
-Multi-language support
-Advanced filtering options
-Cover letter generator
-📝 Support
-Issues: GitHub Issues
-Questions: Open a discussion or issue
-LinkedIn: [Your LinkedIn Profile]
-📄 License
-MIT License - Free to use, modify, and distribute!
-
-Built with ❤️ and frustration by a job seeker, for job seekers
-
-⭐ Star this repo if it helps you find better opportunities!
-
-🔗 Documentation
-📖 Complete Features & Algorithm Guide
-🛠️ Installation Troubleshooting
-🔒 Privacy Policy
-Version 2.0 | Status: Production Ready ✅ EOF
+Star this repo if it helps your job search!

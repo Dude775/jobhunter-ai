@@ -10,8 +10,10 @@ console.log('🚀 JobHunter AI: Autonomous Agent Initialized');
 const CONFIG = {
   API_RATE_LIMIT: 10, // API calls per minute
   BATCH_SIZE: 5, // Jobs to analyze in one batch
-  BLACKLIST_KEYWORDS: ['SAP', 'ERP', 'implementer', 'יישום', 'מיישם', 'legacy', 'COBOL', 'mainframe'],
-  PRIORITY_KEYWORDS: ['RAG', 'AI', 'ML', 'n8n', 'Docker', 'Kubernetes', 'automation', 'infrastructure'],
+  // BLACKLIST_KEYWORDS now loaded from user preferences (Bug #3 fix)
+  DEFAULT_BLACKLIST_KEYWORDS: [], // Empty by default - user controls this
+  // PRIORITY_KEYWORDS now derived from user profile (Bug #2 fix)
+  DEFAULT_PRIORITY_KEYWORDS: [], // Empty by default - extracted from CV
   PREFERRED_LOCATIONS: ['Center District', 'Tel Aviv', 'Remote'],
   MIN_MATCH_THRESHOLD: 60
 };
@@ -216,11 +218,13 @@ Return ONLY a JSON array of objects:
   } catch (error) {
     console.error('❌ Batch analysis failed:', error);
     // Fallback to basic keyword matching
-    return jobs.map((job, index) => ({
+    const { userPreferences } = await chrome.storage.local.get(['userPreferences']);
+    const results = await Promise.all(jobs.map(async (job, index) => ({
       index,
-      score: calculateBasicScore(job, userProfile),
+      score: await calculateBasicScore(job, userProfile, userPreferences),
       reason: 'Basic keyword matching (API error)'
-    }));
+    })));
+    return results;
   }
 }
 
@@ -231,32 +235,42 @@ Return ONLY a JSON array of objects:
 async function handleFilterJob(jobData) {
   console.log(`🔍 Filtering job: ${jobData.title} at ${jobData.company}`);
 
-  // Get user preferences and learning data
-  const { userPreferences, interactionHistory } = await chrome.storage.local.get([
+  // Get user preferences, profile, and learning data
+  const { userPreferences, userProfile, interactionHistory } = await chrome.storage.local.get([
     'userPreferences',
+    'userProfile',
     'interactionHistory'
   ]);
 
+  // Bug #3 Fix: Blacklist is now user-controlled (empty by default)
+  const userBlacklist = userPreferences?.blacklistKeywords || CONFIG.DEFAULT_BLACKLIST_KEYWORDS;
+  // Bug #2 Fix: Priority keywords derived from user profile
+  const userPriorityKeywords = userProfile?.techStack || CONFIG.DEFAULT_PRIORITY_KEYWORDS;
+
   const filters = {
-    blacklist: CONFIG.BLACKLIST_KEYWORDS,
-    whitelist: CONFIG.PRIORITY_KEYWORDS,
+    blacklist: userBlacklist,
+    whitelist: userPriorityKeywords,
     hiddenCompanies: userPreferences?.hiddenCompanies || [],
-    preferredCompanies: userPreferences?.preferredCompanies || []
+    preferredCompanies: userPreferences?.preferredCompanies || [],
+    autoFilter: userPreferences?.autoFilter === true // Default: OFF (Bug #3 fix)
   };
 
-  // Check blacklist
+  // Check blacklist (only if autoFilter is ON AND blacklist has items)
   const jobText = `${jobData.title} ${jobData.company} ${jobData.description || ''}`.toLowerCase();
-  const hasBlacklistKeyword = filters.blacklist.some(keyword =>
-    jobText.includes(keyword.toLowerCase())
-  );
 
-  if (hasBlacklistKeyword) {
-    console.log(`❌ Job filtered out: contains blacklisted keyword`);
-    return {
-      shouldShow: false,
-      reason: 'Contains excluded keywords (SAP/ERP/legacy)',
-      action: 'hide'
-    };
+  if (filters.autoFilter && filters.blacklist.length > 0) {
+    const matchedBlacklistKeyword = filters.blacklist.find(keyword =>
+      jobText.includes(keyword.toLowerCase())
+    );
+
+    if (matchedBlacklistKeyword) {
+      console.log(`❌ Job filtered out: contains blacklisted keyword "${matchedBlacklistKeyword}"`);
+      return {
+        shouldShow: false,
+        reason: `Contains excluded keyword: ${matchedBlacklistKeyword}`,
+        action: 'hide'
+      };
+    }
   }
 
   // Check hidden companies
@@ -458,31 +472,53 @@ async function handleCVAnalysis(apiKey, cvText) {
     throw new Error('Missing API key or CV text');
   }
 
-  const prompt = `Analyze this AI Engineer profile and extract SIMPLE keywords only.
+  const prompt = `Analyze this professional CV/resume and extract relevant keywords for job matching.
 
 Profile:
 ${cvText.substring(0, 4000)}
 
-Return ONLY valid JSON with SIMPLE, SINGLE-WORD keywords:
+Return ONLY valid JSON:
 {
   "summary": "Brief professional summary",
-  "skills": ["RAG Systems", "AI Infrastructure", "n8n Automation", "Docker", "Python"],
-  "techStack": ["RAG", "n8n", "Docker", "Python", "Kubernetes", "Vector", "LLM", "React"],
-  "seniorityLevel": "Senior",
-  "experience": [{"title": "AI Engineer", "company": "TechCorp", "duration": "2 years", "description": "Built RAG systems"}],
-  "education": [{"degree": "BS Computer Science", "institution": "University", "year": "2020"}],
+  "skills": ["Skill 1", "Skill 2", "Skill 3"],
+  "techStack": ["Tech1", "Tech2", "Tech3"],
+  "seniorityLevel": "Junior|Mid-Level|Senior|Lead|Principal",
+  "experience": [{"title": "Job Title", "company": "Company", "duration": "X years", "description": "Brief description"}],
+  "education": [{"degree": "Degree", "institution": "University", "year": "2020"}],
+  "dynamicKeywords": ["keyword1", "keyword2", "keyword3"],
+  "targetJobTitles": ["Job Title 1", "Job Title 2", "Job Title 3", "Job Title 4", "Job Title 5"],
   "email": "email@example.com",
   "phone": "+972-XX-XXX-XXXX",
   "linkedinUrl": "https://linkedin.com/in/username"
 }
 
-CRITICAL REQUIREMENTS:
-- techStack must be SINGLE WORDS or max 2-word phrases
-- NO colons (:), NO lists like "Vector Databases: Pinecone"
-- SIMPLE keywords only: "RAG", "Docker", "Python", "n8n"
-- NO framework lists or detailed descriptions
-- Max 15 items in techStack array
-- Each techStack item must be a clean keyword, not a sentence
+CRITICAL - dynamicKeywords EXTRACTION:
+- Extract 15-20 MOST RELEVANT professional keywords from this specific CV
+- These should match job postings in this person's field
+- Examples by profession:
+  * Product Manager: ["product strategy", "roadmap", "stakeholders", "KPIs", "agile", "scrum", "user research"]
+  * AI Engineer: ["RAG", "LLM", "PyTorch", "embeddings", "MLOps", "machine learning"]
+  * Operations: ["process optimization", "SLA", "vendor management", "workflow", "automation"]
+  * Project Manager: ["project planning", "risk management", "PMO", "stakeholder", "timeline"]
+- Keywords should be 1-3 words each, lowercase
+- Include both hard skills AND soft skills relevant to job matching
+
+CRITICAL - targetJobTitles EXTRACTION:
+- Extract exactly 5 most relevant job titles this person should search for
+- Base titles on their experience, skills, and career level
+- Examples by profession:
+  * AI/ML professional: ["AI Engineer", "ML Engineer", "RAG Engineer", "MLOps Engineer", "AI Solutions Architect"]
+  * Product: ["Product Manager", "Senior Product Manager", "Technical Product Manager", "Product Owner", "Product Lead"]
+  * DevOps: ["DevOps Engineer", "SRE Engineer", "Platform Engineer", "Cloud Engineer", "Infrastructure Engineer"]
+  * Operations: ["CS Operations Manager", "Operations Lead", "Technical Operations Manager", "Customer Success Manager", "Operations Analyst"]
+- Titles should be 2-4 words, properly capitalized
+- Match seniority level to experience (Junior/Mid/Senior/Lead/Principal)
+- FIRST title should be the BEST match for LinkedIn search
+
+OTHER REQUIREMENTS:
+- techStack: max 15 items, simple keywords (no colons or lists)
+- skills: professional competencies
+- seniorityLevel: infer from experience years and job titles
 
 Return ONLY valid JSON, no other text.`;
 
@@ -607,16 +643,37 @@ async function callClaudeAPI(apiKey, prompt, maxTokens = 1000) {
   return content;
 }
 
-function calculateBasicMatch(jobData) {
-  // 🚀 GOD MODE ALGORITHM - Title-First Weighted Scoring System
+async function calculateBasicMatch(jobData) {
+  // 🚀 DYNAMIC PROFILE-BASED SCORING SYSTEM (Bug #2 Fix)
+  // Keywords are now extracted from user's CV profile instead of hardcoded
 
   // ============================================================================
-  // DEBUG VERIFICATION
+  // LOAD USER PROFILE FOR DYNAMIC MATCHING
   // ============================================================================
+  const { userProfile, userPreferences } = await chrome.storage.local.get(['userProfile', 'userPreferences']);
+
+  // Extract dynamic keywords from user profile (Bug #2 fix)
+  // PRIMARY: dynamicKeywords (extracted from CV analysis)
+  // FALLBACK: techStack + skills (for backward compatibility)
+  const dynamicKeywords = (userProfile?.dynamicKeywords || []).map(k => k.toLowerCase());
+  const userTechStack = (userProfile?.techStack || []).map(t => t.toLowerCase());
+  const userSkills = (userProfile?.skills || []).map(s => s.toLowerCase());
+  const userExperience = userProfile?.experience || [];
+  const userSeniority = (userProfile?.seniorityLevel || '').toLowerCase();
+
+  // Build dynamic target titles from user's experience
+  const userTitles = userExperience.map(exp => exp.title?.toLowerCase()).filter(Boolean);
+
+  // Use dynamicKeywords if available, otherwise fall back to techStack+skills
+  const primaryKeywords = dynamicKeywords.length > 0
+    ? dynamicKeywords
+    : [...userTechStack, ...userSkills].slice(0, 20);
+
   console.log(`🔍 ANALYZING: ${jobData.title}`);
   console.log(`📄 Description length: ${jobData.description?.length || 0} chars`);
   console.log(`📍 Location: ${jobData.location || 'MISSING'}`);
   console.log(`🏢 Company: ${jobData.company || 'Unknown'}`);
+  console.log(`👤 Dynamic keywords: ${primaryKeywords.slice(0, 5).join(', ')}`);
 
   const jobTitle = (jobData.title || '').toLowerCase();
   const jobCompany = (jobData.company || '').toLowerCase();
@@ -639,170 +696,276 @@ function calculateBasicMatch(jobData) {
   }
 
   // ============================================================================
-  // PHASE 1: TITLE-FIRST MATCHING (50% weight)
+  // PHASE 1: DYNAMIC TITLE MATCHING (50% weight)
+  // Uses targetJobTitles from CV analysis + synonyms
   // ============================================================================
-  const targetTitles = [
-    { keywords: ['ai engineer', 'artificial intelligence engineer'], points: 50 },
-    { keywords: ['ai infrastructure', 'ml infrastructure'], points: 50 },
-    { keywords: ['ai systems', 'ml systems'], points: 50 },
-    { keywords: ['ml engineer', 'machine learning engineer'], points: 50 },
-    { keywords: ['mlops engineer', 'mlops'], points: 50 },
-    { keywords: ['rag developer', 'rag engineer'], points: 50 },
-    { keywords: ['agentic'], points: 50 },
-    { keywords: ['llm engineer', 'large language model'], points: 50 },
-    { keywords: ['ai architect', 'ml architect'], points: 48 },
-    { keywords: ['data scientist'], points: 40 },
-    { keywords: ['backend engineer', 'backend developer'], points: 35 },
-    { keywords: ['full stack'], points: 30 },
-    { keywords: ['devops engineer'], points: 35 },
-    { keywords: ['software engineer'], points: 30 }
-  ];
 
-  for (const titleGroup of targetTitles) {
-    if (titleGroup.keywords.some(keyword => jobTitle.includes(keyword))) {
-      titleScore = titleGroup.points;
-      matchDetails.push(`✅ Title: "${jobData.title}" (+${titleGroup.points}%)`);
+  // Keyword synonym mappings for better matching
+  const keywordSynonyms = {
+    'prompt engineer': ['llm', 'ai', 'gpt', 'automation', 'agentic', 'orchestration'],
+    'ai agent': ['agentic', 'llm', 'orchestration', 'automation'],
+    'automation': ['workflow', 'n8n', 'make', 'zapier', 'python', 'docker'],
+    'ai engineer': ['ml', 'machine learning', 'llm', 'rag', 'nlp'],
+    'rag': ['retrieval', 'vector', 'embedding', 'llm'],
+    'mlops': ['ml', 'devops', 'kubernetes', 'docker'],
+    'n8n': ['automation', 'workflow', 'integration'],
+    'llm': ['ai', 'gpt', 'claude', 'prompt', 'agentic'],
+    'product manager': ['product', 'pm', 'roadmap', 'strategy', 'stakeholder'],
+    'operations': ['ops', 'process', 'workflow', 'optimization'],
+    'project manager': ['project', 'pmo', 'timeline', 'delivery']
+  };
+
+  // NEW: Get targetJobTitles from profile for direct title matching
+  const targetJobTitles = (userProfile?.targetJobTitles || []).map(t => t.toLowerCase());
+
+  // PRIORITY 1: Direct match against targetJobTitles (highest score)
+  let directTitleMatch = false;
+  for (const targetTitle of targetJobTitles) {
+    // Check if job title contains target title OR vice versa
+    if (jobTitle.includes(targetTitle) || targetTitle.includes(jobTitle.replace(/senior|junior|lead|principal|staff/gi, '').trim())) {
+      titleScore = 45;
+      directTitleMatch = true;
+      matchDetails.push(`✅ Title: Direct match with "${targetTitle}" (+45%)`);
       break;
     }
+    // Check partial matches (e.g., "AI Engineer" matches "Senior AI Engineer")
+    const targetWords = targetTitle.split(/\s+/).filter(w => w.length > 2);
+    const jobWords = jobTitle.split(/\s+/).filter(w => w.length > 2);
+    const matchCount = targetWords.filter(tw => jobWords.some(jw => jw.includes(tw) || tw.includes(jw))).length;
+    if (matchCount >= 2 || (targetWords.length <= 2 && matchCount >= 1)) {
+      titleScore = 35;
+      directTitleMatch = true;
+      matchDetails.push(`✅ Title: Partial match with "${targetTitle}" (+35%)`);
+      break;
+    }
+  }
+
+  // PRIORITY 2: Keyword-based matching (if no direct match)
+  if (!directTitleMatch) {
+    // Build title keywords from user profile
+    const titleKeywords = new Set();
+
+    // Add keywords from user's job titles
+    userTitles.forEach(title => {
+      title.split(/\s+/).forEach(word => {
+        if (word.length > 2) titleKeywords.add(word);
+      });
+    });
+
+    // Add keywords from skills
+    userSkills.forEach(skill => {
+      skill.split(/\s+/).forEach(word => {
+        if (word.length > 2) titleKeywords.add(word.toLowerCase());
+      });
+    });
+
+    // Add synonyms for user's keywords
+    const expandedKeywords = new Set(titleKeywords);
+    titleKeywords.forEach(keyword => {
+      Object.entries(keywordSynonyms).forEach(([key, synonyms]) => {
+        if (keyword.includes(key) || key.includes(keyword)) {
+          synonyms.forEach(syn => expandedKeywords.add(syn));
+        }
+      });
+    });
+
+    // Calculate title match score based on keyword overlap
+    let titleMatches = 0;
+    expandedKeywords.forEach(keyword => {
+      if (jobTitle.includes(keyword)) {
+        titleMatches++;
+      }
+    });
+
+    // Also check if job title matches any synonym keys
+    Object.entries(keywordSynonyms).forEach(([key, synonyms]) => {
+      if (jobTitle.includes(key)) {
+        synonyms.forEach(syn => {
+          if (expandedKeywords.has(syn) || primaryKeywords.includes(syn)) {
+            titleMatches++;
+          }
+        });
+      }
+    });
+
+    // Score based on match percentage (max 50 points)
+    if (expandedKeywords.size > 0) {
+      const matchRatio = titleMatches / Math.min(expandedKeywords.size, 5);
+      titleScore = Math.min(50, Math.round(matchRatio * 50));
+
+      if (titleScore > 0) {
+        matchDetails.push(`✅ Title: Keyword match (+${titleScore}%)`);
+      }
+    }
+
+    // Fallback: Generic title matching for common roles
+    if (titleScore === 0) {
+      const genericTitles = [
+        { keywords: ['engineer', 'developer'], points: 25 },
+        { keywords: ['architect', 'lead'], points: 30 },
+        { keywords: ['manager', 'director'], points: 20 }
+      ];
+
+      for (const titleGroup of genericTitles) {
+        if (titleGroup.keywords.some(keyword => jobTitle.includes(keyword))) {
+          titleScore = titleGroup.points;
+          matchDetails.push(`✅ Title: Generic match (+${titleGroup.points}%)`);
+          break;
+        }
+      }
+    }
+  }
+
+  // BOOST: When description is empty, title gets more weight
+  const descriptionEmpty = !jobData.description || jobData.description.length < 50;
+  if (descriptionEmpty && titleScore > 0 && titleScore < 50) {
+    const boost = Math.min(15, 50 - titleScore);
+    titleScore = titleScore + boost;
+    matchDetails.push(`📈 Title boost (no description): +${boost}%`);
   }
 
   // ============================================================================
   // PHASE 2: LOCATION MATCHING (20% weight)
   // ============================================================================
-  const preferredLocations = [
-    { keywords: ['israel'], points: 20 },
-    { keywords: ['tel aviv', 'tel-aviv'], points: 20 },
-    { keywords: ['remote'], points: 20 },
-    { keywords: ['hybrid'], points: 18 },
-    { keywords: ['center district', 'merkaz'], points: 20 },
-    { keywords: ['herzliya', 'raanana', 'petah tikva'], points: 18 }
-  ];
+  const preferredLocations = userPreferences?.preferredLocations || CONFIG.PREFERRED_LOCATIONS;
+  const locationKeywords = preferredLocations.map(l => l.toLowerCase());
 
-  for (const location of preferredLocations) {
-    if (location.keywords.some(keyword => jobText.includes(keyword))) {
-      locationScore = location.points;
-      matchDetails.push(`📍 Location: Israel/Remote (+${location.points}%)`);
+  for (const location of locationKeywords) {
+    if (jobText.includes(location)) {
+      locationScore = 20;
+      matchDetails.push(`📍 Location: ${location} (+20%)`);
       break;
     }
   }
 
-  // ============================================================================
-  // PHASE 3: GOLD KEYWORDS (20% weight)
-  // ============================================================================
-  const primaryKeywords = [
-    { keyword: 'rag', points: 5, label: 'RAG' },
-    { keyword: 'mcp', points: 5, label: 'MCP' },
-    { keyword: 'agentic', points: 5, label: 'Agentic' },
-    { keyword: 'mlops', points: 5, label: 'MLOps' }
-  ];
+  // Also check common remote keywords
+  if (locationScore === 0 && (jobText.includes('remote') || jobText.includes('hybrid'))) {
+    locationScore = 18;
+    matchDetails.push(`📍 Location: Remote/Hybrid (+18%)`);
+  }
 
-  const secondaryKeywords = [
-    { keyword: 'n8n', points: 2, label: 'n8n' },
-    { keyword: 'docker', points: 2, label: 'Docker' },
-    { keyword: 'python', points: 2, label: 'Python' },
-    { keyword: 'vector', points: 2, label: 'Vector DB' },
-    { keyword: 'langchain', points: 2, label: 'LangChain' },
-    { keyword: 'kubernetes', points: 2, label: 'Kubernetes' },
-    { keyword: 'pytorch', points: 2, label: 'PyTorch' },
-    { keyword: 'tensorflow', points: 2, label: 'TensorFlow' },
-    { keyword: 'llm', points: 2, label: 'LLM' },
-    { keyword: 'embedding', points: 2, label: 'Embeddings' }
-  ];
-
+  // ============================================================================
+  // PHASE 3: DYNAMIC KEYWORD MATCHING (20% weight per spec)
+  // Uses dynamicKeywords extracted from user's CV + synonym expansion
+  // ============================================================================
   let keywordMatches = [];
 
-  primaryKeywords.forEach(({ keyword, points, label }) => {
-    if (jobText.includes(keyword)) {
-      keywordScore += points;
-      keywordMatches.push(label);
-    }
-  });
-
-  secondaryKeywords.forEach(({ keyword, points, label }) => {
-    if (jobText.includes(keyword)) {
-      keywordScore += points;
-      keywordMatches.push(label);
-    }
-  });
-
-  if (keywordMatches.length > 0) {
-    matchDetails.push(`🔑 Keywords: ${keywordMatches.join(', ')} (+${keywordScore}%)`);
-  }
-
-  // Cap at 20%
-  keywordScore = Math.min(20, keywordScore);
-
-  // ============================================================================
-  // PHASE 4: NEGATIVE FILTERS (-20% penalty max)
-  // ============================================================================
-  const negativeFilters = [
-    // HIGH PRIORITY PENALTIES - Different focus areas
-    { keywords: ['computer vision', 'cv engineer', 'image processing', 'opencv'], penalty: -20, label: 'Computer Vision (not RAG)' },
-    { keywords: ['frontend', 'react developer', 'vue', 'angular developer'], penalty: -15, label: 'Frontend-focused' },
-    { keywords: ['mobile developer', 'ios', 'android developer'], penalty: -15, label: 'Mobile-focused' },
-    { keywords: ['game developer', 'unity', 'unreal engine'], penalty: -15, label: 'Game Development' },
-
-    // MEDIUM PRIORITY PENALTIES - Wrong industry/role
-    { keywords: ['qa engineer', 'qa automation', 'quality assurance'], penalty: -10, label: 'QA-only' },
-    { keywords: ['sap', 'sap implementation', 'sap consultant'], penalty: -15, label: 'SAP/ERP' },
-    { keywords: ['erp consultant', 'erp implementation'], penalty: -15, label: 'ERP' },
-    { keywords: ['marketing', 'digital marketing'], penalty: -10, label: 'Marketing' },
-    { keywords: ['manual tester', 'manual testing'], penalty: -12, label: 'Manual Testing' },
-    { keywords: ['support engineer', 'customer support'], penalty: -8, label: 'Support' },
-    { keywords: ['legacy systems', 'cobol', 'mainframe'], penalty: -12, label: 'Legacy Tech' },
-
-    // LOW PRIORITY PENALTIES - Data roles (sometimes relevant)
-    { keywords: ['data analyst', 'business analyst'], penalty: -8, label: 'Analysis-only' },
-    { keywords: ['bi developer', 'tableau', 'power bi'], penalty: -8, label: 'BI-focused' }
-  ];
-
-  let negativeMatches = [];
-
-  negativeFilters.forEach(({ keywords, penalty, label }) => {
-    if (keywords.some(keyword => jobText.includes(keyword))) {
-      // Special handling: Computer Vision is OK if RAG/LLM is also mentioned
-      if (label.includes('Computer Vision')) {
-        if (jobText.includes('rag') || jobText.includes('llm') || jobText.includes('language model')) {
-          negativeScore += penalty / 3; // Reduced penalty
-          negativeMatches.push(`${label} + AI (reduced, -${Math.abs(penalty / 3)}%)`);
-        } else {
-          negativeScore += penalty;
-          negativeMatches.push(`${label} (${penalty}%)`);
-        }
+  // Expand primaryKeywords with synonyms
+  const expandedPrimaryKeywords = new Set(primaryKeywords.map(k => k.toLowerCase()));
+  primaryKeywords.forEach(keyword => {
+    const kLower = keyword.toLowerCase();
+    Object.entries(keywordSynonyms).forEach(([key, synonyms]) => {
+      if (kLower.includes(key) || key.includes(kLower)) {
+        synonyms.forEach(syn => expandedPrimaryKeywords.add(syn));
       }
-      // Reduced penalty if AI/ML/Automation is also mentioned
-      else if (jobText.includes('ai infrastructure') || jobText.includes('mlops') || jobText.includes('machine learning platform')) {
-        negativeScore += penalty / 2;
-        negativeMatches.push(`${label} (AI-related, -${Math.abs(penalty / 2)}%)`);
-      } else {
-        negativeScore += penalty;
-        negativeMatches.push(`${label} (${penalty}%)`);
+    });
+  });
+
+  // Match against expanded keywords
+  expandedPrimaryKeywords.forEach(keyword => {
+    if (jobText.includes(keyword)) {
+      const points = keywordMatches.length < 5 ? 4 : 2;
+      keywordScore += points;
+      if (!keywordMatches.includes(keyword)) {
+        keywordMatches.push(keyword);
       }
     }
   });
 
-  if (negativeMatches.length > 0) {
-    matchDetails.push(`⚠️ Negatives: ${negativeMatches.join(', ')}`);
+  // BOOST: When description empty, boost keyword score from title matches
+  if (descriptionEmpty && keywordMatches.length > 0) {
+    keywordScore = Math.min(30, keywordScore + 10);
+    matchDetails.push(`🔑 Keywords: ${keywordMatches.slice(0, 5).join(', ')} (+${keywordScore}% boosted)`);
+  } else if (keywordMatches.length > 0) {
+    matchDetails.push(`🔑 Keywords: ${keywordMatches.slice(0, 5).join(', ')} (+${keywordScore}%)`);
   }
 
-  // Cap negative score at -20%
-  negativeScore = Math.max(-20, negativeScore);
+  // Cap at 20% normally, 30% when description empty
+  keywordScore = Math.min(descriptionEmpty ? 30 : 20, keywordScore);
 
   // ============================================================================
-  // PHASE 5: SENIORITY BOOST (10% weight)
+  // PHASE 4: USER-CONTROLLED NEGATIVE FILTERS (Bug #3 Fix)
+  // Only apply if user enabled autoFilter AND has blacklist keywords
   // ============================================================================
-  const seniorityLevels = [
-    { keywords: ['senior', 'sr.', 'staff'], points: 10, label: 'Senior/Staff' },
-    { keywords: ['lead', 'principal', 'architect'], points: 10, label: 'Lead/Principal' },
-    { keywords: ['mid-level', 'mid level', 'intermediate'], points: 7, label: 'Mid-Level' },
-    { keywords: ['junior', 'jr.', 'entry level'], points: 5, label: 'Junior (opportunity!)' }
+  const autoFilterEnabled = userPreferences?.autoFilter === true;
+  const userBlacklist = userPreferences?.blacklistKeywords || [];
+
+  if (autoFilterEnabled && userBlacklist.length > 0) {
+    let negativeMatches = [];
+
+    userBlacklist.forEach(keyword => {
+      if (jobText.includes(keyword.toLowerCase())) {
+        negativeScore -= 10;
+        negativeMatches.push(keyword);
+      }
+    });
+
+    if (negativeMatches.length > 0) {
+      matchDetails.push(`⚠️ Blacklist: ${negativeMatches.join(', ')} (${negativeScore}%)`);
+    }
+
+    // Cap negative score at -30%
+    negativeScore = Math.max(-30, negativeScore);
+  }
+
+  // ============================================================================
+  // PHASE 5: SENIORITY/EXPERIENCE LEVEL MATCHING (10% weight)
+  // Matches user's experienceLevels preferences from settings
+  // ============================================================================
+
+  // Get user's preferred experience levels
+  const userExperienceLevels = (userPreferences?.experienceLevels || ['Mid-Senior level']).map(l => l.toLowerCase());
+
+  // Map job title/description keywords to LinkedIn experience levels
+  const experienceLevelMap = [
+    { keywords: ['intern', 'internship'], level: 'internship', points: 10, label: 'Internship' },
+    { keywords: ['entry level', 'entry-level', 'junior', 'jr.', 'graduate', 'trainee'], level: 'entry level', points: 10, label: 'Entry Level' },
+    { keywords: ['associate'], level: 'associate', points: 10, label: 'Associate' },
+    { keywords: ['senior', 'sr.', 'staff', 'mid-senior', 'experienced'], level: 'mid-senior level', points: 10, label: 'Mid-Senior Level' },
+    { keywords: ['director', 'head of', 'vp', 'vice president'], level: 'director', points: 10, label: 'Director' },
+    { keywords: ['executive', 'c-level', 'cto', 'ceo', 'cfo', 'chief'], level: 'executive', points: 10, label: 'Executive' },
+    { keywords: ['lead', 'principal', 'architect', 'manager'], level: 'mid-senior level', points: 10, label: 'Lead/Principal' }
   ];
 
-  for (const level of seniorityLevels) {
-    if (level.keywords.some(keyword => jobTitle.includes(keyword))) {
-      seniorityScore = level.points;
-      matchDetails.push(`👔 Seniority: ${level.label} (+${level.points}%)`);
+  // Check if job matches user's preferred experience levels
+  let matchedLevel = null;
+  for (const levelInfo of experienceLevelMap) {
+    if (levelInfo.keywords.some(keyword => jobText.includes(keyword))) {
+      matchedLevel = levelInfo;
       break;
+    }
+  }
+
+  if (matchedLevel) {
+    // Check if this level matches user's preferences
+    const isPreferredLevel = userExperienceLevels.some(userLevel =>
+      matchedLevel.level.includes(userLevel) || userLevel.includes(matchedLevel.level)
+    );
+
+    if (isPreferredLevel) {
+      seniorityScore = matchedLevel.points;
+      matchDetails.push(`👔 Experience: ${matchedLevel.label} - Preferred (+${seniorityScore}%)`);
+    } else {
+      // Partial score for non-preferred but valid level
+      seniorityScore = Math.max(0, matchedLevel.points - 5);
+      matchDetails.push(`👔 Experience: ${matchedLevel.label} - Not preferred (+${seniorityScore}%)`);
+    }
+  } else {
+    // Default scoring based on user's seniority level from profile
+    const seniorityLevels = [
+      { keywords: ['senior', 'sr.', 'staff'], points: 8, label: 'Senior/Staff' },
+      { keywords: ['lead', 'principal', 'architect'], points: 8, label: 'Lead/Principal' },
+      { keywords: ['mid-level', 'mid level', 'intermediate'], points: 7, label: 'Mid-Level' },
+      { keywords: ['junior', 'jr.', 'entry level'], points: 5, label: 'Junior' }
+    ];
+
+    for (const level of seniorityLevels) {
+      if (level.keywords.some(keyword => jobTitle.includes(keyword))) {
+        const matchesUserLevel = level.keywords.some(k => userSeniority.includes(k));
+        seniorityScore = matchesUserLevel ? level.points : level.points - 3;
+        matchDetails.push(`👔 Seniority: ${level.label} (+${seniorityScore}%)`);
+        break;
+      }
     }
   }
 
@@ -817,45 +980,39 @@ function calculateBasicMatch(jobData) {
   let reason = '';
   let emoji = '';
 
-  if (finalScore >= 95) {
+  if (finalScore >= 75) {
     emoji = '🔥';
-    reason = `${emoji} DREAM JOB! ${matchDetails.join(' • ')}`;
-  } else if (finalScore >= 85) {
-    emoji = '🟢';
-    reason = `${emoji} Excellent Match! ${matchDetails.slice(0, 3).join(' • ')}`;
-  } else if (finalScore >= 70) {
-    emoji = '🟡';
-    reason = `${emoji} Strong Match. ${matchDetails.slice(0, 2).join(' • ')}`;
+    reason = `${emoji} Excellent Match! ${matchDetails.join(' • ')}`;
   } else if (finalScore >= 50) {
+    emoji = '🟡';
+    reason = `${emoji} Good Match. ${matchDetails.slice(0, 3).join(' • ')}`;
+  } else if (finalScore >= 30) {
     emoji = '🟠';
-    reason = `${emoji} Decent Match. ${matchDetails.slice(0, 2).join(' • ')}`;
+    reason = `${emoji} Partial Match. ${matchDetails.slice(0, 2).join(' • ')}`;
   } else {
     emoji = '⚫';
-    reason = `${emoji} Weak Match. ${negativeMatches.length > 0 ? negativeMatches.join(', ') : 'Low relevance'}`;
+    reason = `${emoji} Low Match. ${matchDetails.length > 0 ? matchDetails[0] : 'Few matching keywords'}`;
   }
 
   // ============================================================================
-  // DETAILED DEBUG OUTPUT
+  // DEBUG OUTPUT
   // ============================================================================
   console.log(`
 ╔═══════════════════════════════════════════════════════════════════════════╗
-║ 🎯 GOD MODE ANALYSIS COMPLETE                                            ║
+║ 🎯 DYNAMIC PROFILE-BASED ANALYSIS                                        ║
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║ Job: ${jobData.title?.substring(0, 60)}
 ║ Company: ${jobData.company}
-║ Location: ${jobData.location || 'N/A'}
-║ Description: ${jobData.description ? `${jobData.description.length} chars` : 'MISSING!'}
+║ Profile Keywords: ${userTechStack.slice(0, 3).join(', ')}
 ╠═══════════════════════════════════════════════════════════════════════════╣
 ║ SCORING BREAKDOWN:
 ║   📌 Title Match:     ${titleScore}% (50% max)
 ║   📍 Location:        ${locationScore}% (20% max)
-║   🔑 Keywords:        ${keywordScore}% (20% max)
-║   ⚠️  Negative:        ${negativeScore}% (penalty)
+║   🔑 Keywords:        ${keywordScore}% (30% max)
+║   ⚠️  Blacklist:       ${negativeScore}% (penalty)
 ║   👔 Seniority:       ${seniorityScore}% (10% max)
 ║   ─────────────────────────────────────
 ║   🎯 FINAL SCORE:     ${finalScore}%
-╠═══════════════════════════════════════════════════════════════════════════╣
-║ ${reason.substring(0, 70)}
 ╚═══════════════════════════════════════════════════════════════════════════╝
   `);
 
@@ -872,30 +1029,26 @@ function calculateBasicMatch(jobData) {
   };
 }
 
-function calculateBasicScore(job, userProfile) {
+async function calculateBasicScore(job, userProfile, userPreferences = {}) {
   const jobText = `${job.title} ${job.company}`.toLowerCase();
   let score = 50;
 
-  // Check tech stack matches
-  const userTech = (userProfile.techStack || []).map(t => t.toLowerCase());
+  // Check tech stack matches (dynamic from profile)
+  const userTech = (userProfile?.techStack || []).map(t => t.toLowerCase());
   userTech.forEach(tech => {
     if (jobText.includes(tech)) score += 5;
   });
 
-  // Check skill matches
-  const userSkills = (userProfile.skills || []).map(s => s.toLowerCase());
+  // Check skill matches (dynamic from profile)
+  const userSkills = (userProfile?.skills || []).map(s => s.toLowerCase());
   userSkills.forEach(skill => {
     if (jobText.includes(skill)) score += 3;
   });
 
-  // Priority keywords
-  CONFIG.PRIORITY_KEYWORDS.forEach(keyword => {
-    if (jobText.includes(keyword.toLowerCase())) score += 8;
-  });
-
-  // Blacklist penalties
-  CONFIG.BLACKLIST_KEYWORDS.forEach(keyword => {
-    if (jobText.includes(keyword.toLowerCase())) score -= 30;
+  // Blacklist penalties (user-controlled, empty by default)
+  const blacklist = userPreferences?.blacklistKeywords || [];
+  blacklist.forEach(keyword => {
+    if (jobText.includes(keyword.toLowerCase())) score -= 20;
   });
 
   return Math.max(0, Math.min(100, score));
